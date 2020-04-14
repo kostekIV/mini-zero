@@ -5,8 +5,8 @@ from copy import deepcopy
 
 def pretty_print_board(board, probs=None):
     mp = {
-        1: 'X',
-        -1: 'O',
+        1: '\033[92mX\033[0m',
+        -1: '\033[94mO\033[0m',
         0: ' '
     }
 
@@ -19,7 +19,7 @@ def pretty_print_board(board, probs=None):
         for i, row in enumerate(b):
             for j, x in enumerate(row):
                 if x == ' ':
-                    b[i][j] = f"{probs[i * m + j]: .3f}".strip()
+                    b[i][j] = f"{probs[i * m + j]:.3f}"
     cell_w = 7
     print("-"*(cell_w*m +m))
     for row in b:

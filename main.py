@@ -10,7 +10,7 @@ from game import TicTacToe as TTT, pretty_print_board
 from model import get_model
 
 
-def play_one(game, a, b, verbose=False):
+def play_one(game, a, b, s=0, verbose=False):
     players = [a, b]
     history = []
     turn = 0
@@ -29,24 +29,33 @@ def play_one(game, a, b, verbose=False):
     if verbose:
         pretty_print_board(game.state(), phi)
         print(f"winner {game.winner}")
-    
-    return history
+    return history[s::2]
 
 def main():
-    model = get_model((10, 10, 2), 100)
+    model = get_model((9, 9, 2), 81)
     h = []
-    for i in range(10):
-        for i in trange(100, desc='models are playing :)'):
-            t = TTT(10, 10, 5)
-            players = [MA(model), MA(model)]
-            h += play_one(t, *players, i % 50 == 0)
+    for i in range(1000):
+        for j in trange(10, desc='models are playing :)'):
+            t = TTT(9, 9, 5)
+            players = [None, None]
+            players[i%2] = MA(model, 101)
+            players[(i+1)%2] = MA(model, 50)
+            h += play_one(t, *players, j % 2, False)
         
-        train = np.array([x[0] for x in h])
-        phis = np.array([x[1] for x in h])
-        vs = np.array([x[2] for x in h])
-        model.fit(train, [phis, vs])
-        h = shuffle(h)[-1000:]
+        train, phis, vs = shuffle(
+            np.array([x[0] for x in h]),
+            np.array([x[1] for x in h]),
+            np.array([x[2] for x in h])
+        )
+        n66 = len(train) // 3 * 2
+        model.fit(train[:n66], [phis[:n66], vs[:n66]])
+        h = shuffle(h)[-10000:] # keep some old records
+        if i % 10 == 0:
+            t = TTT(9, 9, 5)
+            players = [MA(model), MA(model)]
+            play_one(t, *players, i % 2, True)
     model.save("models/mini-zero")
+
 
 if __name__ == '__main__':
     # cudnn problem
