@@ -19,52 +19,62 @@ class MCTreeSearch:
         self.visited = {}
 
     def expand(self, game):
-        state = game.state()
-        s_hash = _array_hash(state)
-        player = game.turn
+        states = []
+        actions = []
+        v = None
+        while True:
+            state = game.state()
+            s_hash = _array_hash(state)
+            player = game.turn
 
-        if game.winner:
-            return abs(game.winner)
+            if game.winner:
+                v = abs(game.winner)
 
-        nn_format = self._state(state, player)
-        allowed_moves = game.allowed_moves()
-        moves_size = len(allowed_moves)
+            nn_format = self._state(state, player)
+            allowed_moves = game.allowed_moves()
+            moves_size = len(allowed_moves)
 
-        if not self.visited.get(s_hash, False):
-            pol, v = self.model.predict(nn_format.reshape(1, *nn_format.shape))
+            if v is None and not self.visited.get(s_hash, False):
+                pol, v = self.model.predict(nn_format.reshape(1, *nn_format.shape))
 
-            pol = pol[0]
-            v = v[0]
+                pol = pol[0]
+                v = v[0]
 
-            pol *= allowed_moves
-            if np.sum(pol) == 0:
-                print("policy zero out")
-                self.policy[s_hash] = allowed_moves
-            else:
-                self.policy[s_hash] = pol / np.sum(pol)
-            self.visited[s_hash] = True
-            self.N[s_hash] = 0
-            self.Na[s_hash] = np.zeros(moves_size)
-            self.Q[s_hash] = np.zeros(moves_size)
-            self.W[s_hash] = np.zeros(moves_size)
+                pol *= allowed_moves
+                if np.sum(pol) == 0:
+                    print("policy zero out")
+                    self.policy[s_hash] = allowed_moves
+                else:
+                    self.policy[s_hash] = pol / np.sum(pol)
+                self.visited[s_hash] = True
+                self.N[s_hash] = 0
+                self.Na[s_hash] = np.zeros(moves_size)
+                self.Q[s_hash] = np.zeros(moves_size)
+                self.W[s_hash] = np.zeros(moves_size)
 
-            return -v
+                v = -v
 
-        u = np.ma.array(
-            self.Q[s_hash] + self.C * self.policy[s_hash] * np.sqrt((self.N[s_hash] + 1e-10)/ (1 + self.Na[s_hash])),
-            mask=abs(1 - allowed_moves),
-            fill_value=float('-inf')
-        )
-        action_best = np.argmax(u)
-        game.move(action_best)
-        v = self.expand(game)
-        
-        self.W[s_hash][action_best] += v
-        self.Na[s_hash][action_best] += 1
-        self.Q[s_hash][action_best] = self.W[s_hash][action_best] / self.Na[s_hash][action_best]
+            if v is not None and len(actions) > 0:
+                for state, a in zip(reversed(states), reversed(actions)):
+                    self.W[state][a] += v
+                    self.Na[state][a] += 1
+                    self.Q[state][a] = self.W[state][a] / self.Na[state][a]
 
-        self.N[s_hash] += 1
-        return -v
+                    self.N[state] += 1
+                    v *= -1
+                return
+
+            u = np.ma.array(
+                self.Q[s_hash] + self.C * self.policy[s_hash] * np.sqrt((self.N[s_hash] + 1e-10)/ (1 + self.Na[s_hash])),
+                mask=abs(1 - allowed_moves),
+                fill_value=float('-inf')
+            )
+
+            action_best = np.argmax(u)
+            game.move(action_best)
+            
+            actions.append(action_best)
+            states.append(s_hash)
 
     def _state(self, state, player):
         ones = (state == 1).astype(np.float)
@@ -73,13 +83,10 @@ class MCTreeSearch:
             return np.stack((ones, m_ones), axis=-1)
         return np.stack((m_ones, ones), axis=-1)
 
-    def get_move(self, game, mc=0):
+    def get_move(self, game, t):
         for _ in range(self.nr_sim):
             self.expand(deepcopy(game))
 
-        t = 1
-        if mc > 14:
-            t = 0
         phi = self.get_phi(game.state(), t)
         move = np.random.choice(len(phi), p=phi)
 

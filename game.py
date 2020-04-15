@@ -5,8 +5,8 @@ from copy import deepcopy
 
 def pretty_print_board(board, probs=None):
     mp = {
-        1: '\033[92mX\033[0m',
-        -1: '\033[94mO\033[0m',
+        1: '  \033[92mX\033[0m  ',
+        -1: '  \033[94mO\033[0m  ',
         0: ' '
     }
 
@@ -133,7 +133,7 @@ class TicTacToe():
             self.winner = player
             return GameState.WIN
 
-        if len(self.allowed_moves()) == 0:
+        if sum(self.allowed_moves()) == 0:
             self.winner = 0
             return GameState.TIE
 

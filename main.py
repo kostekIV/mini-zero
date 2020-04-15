@@ -1,3 +1,4 @@
+import argparse
 import tensorflow as tf
 import numpy as np
 
@@ -32,29 +33,30 @@ def play_one(game, a, b, s=0, verbose=False):
     return history[s::2]
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('model_id')
+    args = parser.parse_args()
+
+    model_id = int(args.model_id)
     model = get_model((9, 9, 2), 81)
-    h = []
-    for i in range(1000):
-        for j in trange(10, desc='models are playing :)'):
-            t = TTT(9, 9, 5)
-            players = [None, None]
-            players[i%2] = MA(model, 101)
-            players[(i+1)%2] = MA(model, 50)
-            h += play_one(t, *players, j % 2, False)
-        
-        train, phis, vs = shuffle(
-            np.array([x[0] for x in h]),
-            np.array([x[1] for x in h]),
-            np.array([x[2] for x in h])
-        )
-        n66 = len(train) // 3 * 2
-        model.fit(train[:n66], [phis[:n66], vs[:n66]])
-        h = shuffle(h)[-10000:] # keep some old records
-        if i % 10 == 0:
-            t = TTT(9, 9, 5)
-            players = [MA(model), MA(model)]
-            play_one(t, *players, i % 2, True)
-    model.save("models/mini-zero")
+
+    if model_id == 0:
+        model.save(f"models/mini-zero-{model_id}")
+    else:
+        phis = np.load(f"data/{model_id - 1}/phis.npy")
+        vs = np.load(f"data/{model_id - 1}/vals.npy")
+        states = np.load(f"data/{model_id - 1}/states.npy")
+
+        if model_id > 10:
+            a = np.arange(model_id - 1)[-10:]
+            ids = np.random.choice(a, 5, replace=False)
+            for id in ids:
+                phis = np.concatenate((phis, np.load(f"data/{id}/phis.npy")), axis=0)
+                vs = np.concatenate((vs, np.load(f"data/{id}/vals.npy")), axis=0) 
+                states = np.concatenate((states, np.load(f"data/{id}/states.npy")), axis=0)
+
+        model.fit(states, [phis, vs])
+        model.save(f"models/mini-zero-{model_id}")
 
 
 if __name__ == '__main__':

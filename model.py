@@ -10,12 +10,12 @@ def get_model(input_size, output_size, fs=64, layers_deep=3, kernel_size=3):
 
     x = inputs
     for _ in range(layers_deep):
-        x = layers.Conv2D(fs, kernel_size, strides=1)(x)
+        x = layers.Conv2D(fs, kernel_size, strides=1, kernel_regularizer=keras.regularizers.l2())(x)
         x = layers.BatchNormalization()(x)
         x = layers.ReLU()(x)
     
     # policy_head
-    x_pol = layers.Conv2D(2, 1, strides=1)(x)
+    x_pol = layers.Conv2D(2, 1, strides=1, kernel_regularizer=keras.regularizers.l2())(x)
     x_pol = layers.BatchNormalization()(x_pol)
     x_pol = layers.ReLU()(x_pol)
     x_pol = layers.Flatten()(x_pol)
@@ -23,12 +23,12 @@ def get_model(input_size, output_size, fs=64, layers_deep=3, kernel_size=3):
     pol = layers.Dense(output_size, activation='softmax', name='pol-head')(x_pol)
 
     # value head
-    x_val = layers.Conv2D(1, (1, 1), strides=(1, 1))(x)
+    x_val = layers.Conv2D(1, 1, strides=1, kernel_regularizer=keras.regularizers.l2())(x)
     x_val = layers.BatchNormalization()(x_val)
     x_val = layers.ReLU()(x_val)
     x_val = layers.Flatten()(x_val)
 
-    x_val = layers.Dense(128, activation='relu')(x_val)
+    x_val = layers.Dense(128, activation='relu', kernel_regularizer=keras.regularizers.l2())(x_val)
     val = layers.Dense(1, activation='tanh', name='val-head')(x_val)
 
     model = keras.Model(inputs=inputs, outputs=[pol, val], name='mini-zero')
