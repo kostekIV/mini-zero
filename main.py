@@ -38,24 +38,29 @@ def main():
     args = parser.parse_args()
 
     model_id = int(args.model_id)
-    model = get_model((9, 9, 2), 81)
 
     if model_id == 0:
+        model = get_model((10, 10, 2), 100)
         model.save(f"models/mini-zero-{model_id}")
     else:
-        phis = np.load(f"data/{model_id - 1}/phis.npy")
-        vs = np.load(f"data/{model_id - 1}/vals.npy")
-        states = np.load(f"data/{model_id - 1}/states.npy")
+        model = tf.keras.models.load_model(f"models/mini-zero-{model_id - 1}")
 
-        if model_id > 10:
-            a = np.arange(model_id - 1)[-10:]
-            ids = np.random.choice(a, 5, replace=False)
-            for id in ids:
-                phis = np.concatenate((phis, np.load(f"data/{id}/phis.npy")), axis=0)
-                vs = np.concatenate((vs, np.load(f"data/{id}/vals.npy")), axis=0) 
-                states = np.concatenate((states, np.load(f"data/{id}/states.npy")), axis=0)
+        phis = np.loadtxt(f"data/{model_id - 1}/phis.npy", delimiter=",").reshape(-1, 100)
+        vs = np.loadtxt(f"data/{model_id - 1}/vals.npy", delimiter=",").reshape(-1, 1)
+        states = np.loadtxt(f"data/{model_id - 1}/states.npy", delimiter=",").reshape(-1, 10, 10, 2)
+        
+        ids = [i for i in range(model_id - 1)][-50:]
+        if len(ids) > 0:
+            second_ids = np.random.choice(ids, min(len(ids), 5), replace=False)
+            for m_id in second_ids:
+                phis = np.concatenate((phis, np.loadtxt(f"data/{m_id}/phis.npy", delimiter=",").reshape(-1, 100)), axis=0)
+                vs = np.concatenate((vs, np.loadtxt(f"data/{m_id}/vals.npy", delimiter=",").reshape(-1, 1)), axis=0)
+                states = np.concatenate((states, np.loadtxt(f"data/{m_id}/states.npy", delimiter=",").reshape(-1, 10, 10, 2)), axis=0)
 
-        model.fit(states, [phis, vs])
+        epochs = 10
+
+        phis, vs, states = shuffle(phis, vs, states)
+        model.fit(states, [phis, vs], epochs=epochs, batch_size=64, validation_split=0.1)
         model.save(f"models/mini-zero-{model_id}")
 
 
@@ -71,4 +76,5 @@ if __name__ == '__main__':
                 print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
         except RuntimeError as e:
             print(e)
+    print(gpus)
     main()

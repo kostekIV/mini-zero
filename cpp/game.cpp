@@ -9,7 +9,7 @@ TicTacToe::TicTacToe(int n, int m, int req):
   winner = 2;
 }
 
-std::vector<int> TicTacToe::allowed_moves() {
+std::vector<float> TicTacToe::allowed_moves() {
   return _allowed_moves;
 }
 
@@ -18,8 +18,8 @@ std::vector<float> TicTacToe::state() const {
   for (int t = 0; t < 2; t++) {
     for (int i = 0; i < n; i++) {
       for (int j = 0; j< m; j++) {
-        if ((board[i][j] == 1 and t == 0) or (board[i][j] == -1 and t == 1)) {
-          res[t * m * n + i * m + j] = 1.;
+        if ((board[i][j] == turn and t == 0) or (board[i][j] == -turn and t == 1)) {
+          res[t * m * n + i * m + j] = 1;
         }
       }
     }
@@ -136,7 +136,10 @@ int TicTacToe::get_winner() {
 
 std::ostream& operator<<(std::ostream& os, const TicTacToe& t) {
   os << std::string(t.m * 7 + t.m, '-') << std::endl;
+  std::string emp = "|";
+  for (int i = 0; i < t.m; i++) emp += "       |";
   for (int i = 0; i < t.n; i ++) {
+    os << emp << std::endl;
     os << "|";
     for (int j = 0; j < t.m; j++) {
       os << "   ";
@@ -149,7 +152,9 @@ std::ostream& operator<<(std::ostream& os, const TicTacToe& t) {
       }
       os << "   |";
     }
-    os << std::endl << std::string(t.m * 7 + t.m, '-') << std::endl;
+
+    os << std::endl << emp << std::endl;
+    os << std::string(t.m * 7 + t.m, '-') << std::endl;
   }
   return os;
 }
