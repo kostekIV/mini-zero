@@ -50,12 +50,13 @@ with open("result_cpp", "r") as cpp:
 np.set_printoptions(precision=4)
 np.set_printoptions(suppress=True)
 z = np.zeros((1, 10, 10, 2))
-z[0, 0, 0, 1] = 1
+z[0, 2, 0:3, 1] = 1
+print(z)
 p, v = model.predict(np.zeros((1, 10, 10, 2)))
 p2, v2 = model.predict(z)
 z[0, 1, 1, 0] = 1
 
 p3, v3 = model.predict(z)
-print(p.reshape(10, 10), v)
-print(p2.reshape(10, 10), v2)
-print(p3.reshape(10, 10), v3)
+print(100 * p.reshape(10, 10), v)
+print(100 * p2.reshape(10, 10), v2)
+print(100 * p3.reshape(10, 10), v3)

@@ -7,23 +7,19 @@
 #include <string>
 #include <algorithm>
 #include <fstream>
-#include <gsl/gsl_rng.h>
 
 #include "model.hpp"
 #include "game.hpp"
-#include "mcts.hpp"
+#include "mct_search.hpp"
 
 
 
 void self_play(
-    model &m1, model &m2, int model_id1, int model_id2, std::vector<float> &phis, std::vector<float> &states, std::vector<float> &vs, int nr_games=200) {
+    model &m1, model &m2, int model_id1, int model_id2, std::vector<double> &phis, std::vector<double> &states, std::vector<double> &vs, int nr_games=200) {
 
   std::random_device r;
   std::default_random_engine generator(r());
   std::uniform_real_distribution<float> uniform(0.0, 1.0);
-  auto T = gsl_rng_default;
-  auto gsl_r = gsl_rng_alloc(T);
-  gsl_rng_set(gsl_r, generator());
 
   int play_as_x = 0;
 
@@ -39,31 +35,27 @@ void self_play(
     int model_move_count = 0;
     auto g = TicTacToe(10, 10, 5);
 
-    mcts x[] = {mcts(&m1, 251, gsl_r), mcts(&m2, 251, gsl_r)};
+    mct_search x[] = {mct_search(&m1, g, r(), 600), mct_search(&m2, g, r(), 600)};
 
 
     while (g.get_winner() == 2) {
       if (z == nr_games - 1) {
         std::cout << g;
       }
-      auto phi = x[(move_count + play_as_x) % 2].expand_probs(g);
+
+      auto &player = x[(move_count + play_as_x) % 2];
+      player.expand(true);
+      auto phi = player.get_phi();
       auto state = g.state();
 
-      move_count += 1;
-      if (play_as_x == move_count % 2) {
-        model_move_count += 1;
-        std::copy(phi.begin(), phi.end(), std::back_inserter(phis));
-        std::copy(state.begin(), state.end(), std::back_inserter(states));
-      }
-
-      if (move_count < 20 and uniform(generator) >= 0.25) {
-        for (int i = 0; i < g.allowed_moves().size(); i++) {
-          phi[i] = g.allowed_moves()[i];
-        }
-      }
-      std::discrete_distribution<int> du(phi.begin(), phi.end());
-      auto move = du(generator);
+      model_move_count += 1;
+      std::copy(phi.begin(), phi.end(), std::back_inserter(phis));
+      std::copy(state.begin(), state.end(), std::back_inserter(states));
+      auto move = player.get_move();
+      x[0].advance(move);
+      x[1].advance(move);
       g.move(move);
+      move_count += 1;
     }
     if (z == nr_games - 1) {
       std::cout << g;
@@ -76,9 +68,6 @@ void self_play(
       winner = 0; // no op
     } else {
       winner = -1;
-    }
-    for(int i = 0; i < model_move_count; i++) {
-      vs.push_back(winner);
     }
 
     // collect statistics to display
@@ -100,8 +89,16 @@ void self_play(
       }
     }
 
+    if (play_as_x != 0) {
+      winner *= -1;
+    }
+    for(int i = 0; i < model_move_count; i++) {
+      vs.push_back(winner);
+      winner *= - 1;
+    }
+
     play_as_x = (play_as_x + 1) % 2;
-    std::cout << "\033[K" << played_games << "/" << nr_games << "\r" << std::flush;
+    std::cout << "\r\033[K" << played_games << "/" << nr_games << std::flush;
   }
   auto played_games_as_y = played_games - played_games_as_x;
   std::cout << "\n";
@@ -111,33 +108,20 @@ void self_play(
   std::cout << "Winrate as o: " << model_1_wins_as_o / played_games_as_y << "\n";
   std::cout << "Lose rate as x: " << model_1_losses_as_x / played_games_as_x << "\n";
   std::cout << "Lose rate as o: " << model_1_losses_as_o / played_games_as_y << "\n";
-
-  gsl_rng_free(gsl_r);
 }
 
-void helper(std::string path, std::vector<float>& p) ;
+void helper(std::string path, std::vector<double>& p) ;
 int main(int argc, char *argv[]) {
   int model_id1 = atoi(argv[1]);
-  // int model_id2 = atoi(argv[2]);
-
-  // if (model_id2 < 0) {
-  //   play_with_human(model_id1);
-  //   return 0;
-  // }
-
-  // std::vector<int> ids;
-  // for (int i = 2; i < argc; i++) {
-  //   ids.push_back(atoi(argv[i]));
-  // }
 
   std::ostringstream s1;
   s1 << "./models/mini-zero-" << model_id1;
   model m1(s1.str().c_str(), "serve");
 
-  std::vector<float> phis;
-  std::vector<float> states;
-  std::vector<float> vs;
-  self_play(m1, m1, model_id1, model_id1, phis, states, vs, 1000);
+  std::vector<double> phis;
+  std::vector<double> states;
+  std::vector<double> vs;
+  self_play(m1, m1, model_id1, model_id1, phis, states, vs, 750);
 
 
   std::ostringstream sp;
@@ -149,7 +133,7 @@ int main(int argc, char *argv[]) {
   helper(save_path + "states.npy", states);
 }
 
-void helper(std::string path, std::vector<float>& p) {
+void helper(std::string path, std::vector<double>& p) {
   std::ofstream ofs(path);
   for (int i = 0; i < p.size(); i++) {
     ofs << p[i];

@@ -20,7 +20,7 @@ private:
   gsl_rng * r;
   model *m;
   int nr_sim;
-  double c = 1;
+  double c = 4.20;
   std::vector<double> alphas;
   gsl_vector* th;
   gsl_vector* am_vec;
@@ -35,7 +35,7 @@ public:
   mcts() {};
   mcts(const mcts&) = delete;
   mcts& operator=(const mcts&) = delete;
-  mcts(model *m, int nr_sim, gsl_rng *r = NULL): m(m), nr_sim(nr_sim), r(r), alphas(100, 0.2) {
+  mcts(model *m, int nr_sim, gsl_rng *r = NULL): m(m), nr_sim(nr_sim), r(r), alphas(100, 1) {
     th = gsl_vector_alloc(100);
     am_vec = gsl_vector_alloc(100);
     u_vec = gsl_vector_alloc(100);
@@ -58,29 +58,20 @@ public:
       auto state = t.state();
       if (ps.find(t) == ps.end()) {
         auto v_pol = m->predict(state.data());
+
         v = v_pol.first;
         auto pol = v_pol.second;
 
-
         auto pol_vec = gsl_vector_alloc(pol.size());
-
         auto w = gsl_vector_alloc(pol.size());
         auto q = gsl_vector_alloc(pol.size());
         auto na = gsl_vector_alloc(pol.size());
         gsl_vector_set_zero(w);
         gsl_vector_set_zero(q);
         gsl_vector_set_zero(na);
+
         for (int i = 0; i < pol.size(); i++) {
           gsl_vector_set(pol_vec, i, pol[i]);
-        }
-        if (r != NULL) {
-          gsl_vector_set_zero(th);
-          gsl_ran_dirichlet(r, pol.size(), alphas.data(), gsl_vector_ptr(th, 0));
-          gsl_vector_scale(th, 0.25);
-          gsl_blas_daxpy(0.75, pol_vec, th);
-          // for (int i = 0; i < pol.size(); i++) {
-          //   pol[i] = 0.75 * pol[i] + 0.25 * thethas[i];
-          // }
         }
 
         gsl_vector_mul(pol_vec, am_vec);
@@ -90,30 +81,12 @@ public:
           pol_sum = gsl_blas_dasum(pol_vec);
         }
         gsl_vector_scale(pol_vec, 1 / pol_sum);
-        // for (int i = 0; i < pol.size(); i++) {
-        //   pol[i] *= allowed_moves[i];
-        // }
-        // auto pol_sum = std::accumulate(pol.begin(), pol.end(), 0.0);
-        // auto am_sum = std::accumulate(allowed_moves.begin(), allowed_moves.end(), 0.0);
-        // for (int i = 0; i < pol.size(); i++) {
-        //   if (pol_sum != 0) {
-        //     pol[i] /= pol_sum;
-        //   } else {
-        //     pol[i] = allowed_moves[i] / am_sum;
-        //   }
-        // }
-
 
         ps[t] = pol_vec;
         N[t] = 0;
         W[t] = w;
         Q[t] = q;
         Na[t] = na;
-        // ps[t] = pol_vec;
-        // N[t] = 0;
-        // W.try_emplace(t, allowed_moves.size(), 0);
-        // Q.try_emplace(t, allowed_moves.size(), 0);
-        // Na.try_emplace(t, allowed_moves.size(), 0);
       }
 
       if (v != -10) {
@@ -123,67 +96,66 @@ public:
           auto a = actions[i];
           auto state = states[i];
 
-          gsl_vector_set(W[state], a, v + gsl_vector_get(W[state], a));
-          gsl_vector_set(Na[state], a, 1 + gsl_vector_get(Na[state], a));
-          gsl_vector_set(Q[state], a, v + gsl_vector_get(W[state], a) / gsl_vector_get(Na[state], a));
-
-          // Na[state][a] += 1;
-          // Q[state][a] = W[state][a] / Na[state][a];
-
+          auto wv = gsl_vector_get(W[state], a) + v;
+          auto nav = 1 + gsl_vector_get(Na[state], a);
+          gsl_vector_set(W[state], a, wv);
+          gsl_vector_set(Na[state], a, nav);
+          gsl_vector_set(Q[state], a, wv / nav);
           N[state] += 1;
         }
         return;
       }
 
-      double best_u = INT32_MIN;
       double n = sqrt(N[t]);
 
+      // compute u = Q[t] + c*p[t] *(n / (Na[t] + 1))
       gsl_vector_memcpy(u_vec, ps[t]);
       gsl_vector_memcpy(temp_vec, Na[t]);
       gsl_vector_add_constant(temp_vec, 1);
       gsl_vector_div(u_vec, temp_vec);
-      gsl_blas_daxpy(c*n, u_vec, Q[t]);
+      gsl_vector_axpby(1, Q[t], c*n, u_vec);
+
+      // add penalty to illegal moves
       gsl_vector_set_all(temp_vec, -1);
       gsl_vector_add(temp_vec, am_vec);
-      gsl_vector_scale(temp_vec, 1000);
-      gsl_vector_add(u_vec, temp_vec);
-
+      gsl_vector_axpby(100, temp_vec, 1, u_vec);
       auto best_a = gsl_vector_max_index(u_vec);
-      // for (int i = 0; i < 100; i++)
-      //   std::cout << gsl_vector_get(u_vec, i) << " ";
-      // std::cout << "\n";
-      // std::cout << best_a << "\n";
-      // for (int i = 0; i < allowed_moves.size(); i++) {
-      //   if (allowed_moves[i] == 1) {
-      //     float u = Q[t][i] + c * ps[t][i] * n/(Na[t][i] + 1);
-      //     if (u > best_u) {
-      //       best_a = i;
-      //       best_u = u;
-      //     }
-      //   }
-      // }
       states.push_back(t);
       actions.push_back(best_a);
       t.move(best_a);
     }
   }
 
-  std::vector<float> expand_probs(TicTacToe &t) {
+  std::vector<double> expand_probs(TicTacToe &t) {
+    bool dirichlet_applied = false;
     for (int i = 0; i < nr_sim; i++) {
+      // add dirichlet noise if training in root state
+      if (not dirichlet_applied and r != NULL and ps.find(t) != ps.end()) {
+        gsl_ran_dirichlet(r, 100, alphas.data(), gsl_vector_ptr(th, 0));
+        gsl_vector_axpby(0.5, th, 0.5, ps[t]);
+        dirichlet_applied = true;
+      }
       expand(t);
     }
-
-    std::vector<float> phi(t.allowed_moves().size());
+    std::vector<double> phi(t.allowed_moves().size());
     auto Nsa = Na[t];
-    auto Ns = 1 / N[t];
+    auto Ns = 1 / gsl_blas_dasum(Nsa);
     gsl_vector_memcpy(temp_vec, Nsa);
     gsl_vector_scale(temp_vec, Ns);
-    // auto Ns = std::accumulate(Nsa.begin(), Nsa.end(), 0.);
     for (int i = 0; i < phi.size(); i++) {
       phi[i] = gsl_vector_get(temp_vec, i);
     }
 
     return phi;
+  }
+
+  std::vector<double> get_Q(TicTacToe &t) {
+    std::vector<double> q(t.allowed_moves().size());
+    for (int i = 0; i < q.size(); i++) {
+      q[i] = gsl_vector_get(Q[t], i);
+    }
+
+    return q;
   }
 
   ~mcts() {

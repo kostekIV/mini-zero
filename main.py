@@ -1,36 +1,39 @@
 import argparse
 import tensorflow as tf
 import numpy as np
+import subprocess
 
 from tqdm import trange
 from sklearn.utils import shuffle
 
-from random_agent import RandomAgent as RA
-from mcts_agent import MCTSAgent as MA
-from game import TicTacToe as TTT, pretty_print_board
 from model import get_model
 
 
-def play_one(game, a, b, s=0, verbose=False):
-    players = [a, b]
-    history = []
-    turn = 0
-    while game.in_progress():
-        p = players[turn]
-        k, phi, state = p.move(game)
-        history.append([state, phi, None])
-        if verbose:
-            pretty_print_board(game.state(), phi)
-        game.move(k)
-        turn = (turn + 1) % 2
-    winner = game.winner
-    for i in range(len(history)):
-        history[i][2] = winner
-        winner *= -1
-    if verbose:
-        pretty_print_board(game.state(), phi)
-        print(f"winner {game.winner}")
-    return history[s::2]
+def bootstrap_from_to(fr, to):
+    model = get_model((10, 10, 2), 100, 1, kernel_size=5)
+    for i in range(fr, to):
+        phis = np.loadtxt(f"data/{i}/phis.npy", delimiter=",").reshape(-1, 100)
+        vs = np.loadtxt(f"data/{i}/vals.npy", delimiter=",").reshape(-1, 1)
+        states = np.loadtxt(f"data/{i}/states.npy", delimiter=",").reshape(-1, 10, 10, 2)
+
+        phis, vs, states = shuffle(phis, vs, states)
+        model.fit(states, [phis, vs], epochs=20, batch_size=64, validation_split=0.1)
+        model.save(f"models/mini-zero-{to}")
+
+
+def add_rotations(states, phis, vs):
+    vs = np.tile(vs, (2, 1))
+    pss = []
+    sts = []
+    ks = np.random.choice(4, 2, replace=False)
+    for k in ks:
+        pss += [np.rot90(phis.reshape(-1, 10, 10), k, axes=(1, 2)).reshape(-1, 100)]
+        sts += [np.rot90(states, k, axes=(1, 2))]
+    states = np.concatenate(sts, axis=0)
+    phis = np.concatenate(pss, axis=0)
+
+    return states, phis, vs
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -40,27 +43,41 @@ def main():
     model_id = int(args.model_id)
 
     if model_id == 0:
-        model = get_model((10, 10, 2), 100)
+        model = get_model((10, 10, 3), 100, 1, kernel_size=5)
         model.save(f"models/mini-zero-{model_id}")
     else:
         model = tf.keras.models.load_model(f"models/mini-zero-{model_id - 1}")
 
         phis = np.loadtxt(f"data/{model_id - 1}/phis.npy", delimiter=",").reshape(-1, 100)
         vs = np.loadtxt(f"data/{model_id - 1}/vals.npy", delimiter=",").reshape(-1, 1)
-        states = np.loadtxt(f"data/{model_id - 1}/states.npy", delimiter=",").reshape(-1, 10, 10, 2)
+        states = np.loadtxt(f"data/{model_id - 1}/states.npy", delimiter=",").reshape(-1, 10, 10, 3)
         
-        ids = [i for i in range(model_id - 1)][-50:]
-        if len(ids) > 0:
-            second_ids = np.random.choice(ids, min(len(ids), 5), replace=False)
-            for m_id in second_ids:
-                phis = np.concatenate((phis, np.loadtxt(f"data/{m_id}/phis.npy", delimiter=",").reshape(-1, 100)), axis=0)
-                vs = np.concatenate((vs, np.loadtxt(f"data/{m_id}/vals.npy", delimiter=",").reshape(-1, 1)), axis=0)
-                states = np.concatenate((states, np.loadtxt(f"data/{m_id}/states.npy", delimiter=",").reshape(-1, 10, 10, 2)), axis=0)
+        epochs = 12
+        # Get rid of begginers model relatively fast
+        # but later keep more datas from old games to disallow overfitting to current network
+        if model_id >= 2:
+            if model_id < 5:
+                mids = range(0, model_id - 1)
+            elif model_id < 15:
+                mids = range(max(1, model_id - 7), model_id - 1)
+            else:
+                mids = range(max(9, model_id - 10), model_id - 1)
+            for mid in mids:
+                phis = np.concatenate((phis, np.loadtxt(f"data/{mid}/phis.npy", delimiter=",").reshape(-1, 100)), axis=0)
+                vs = np.concatenate((vs, np.loadtxt(f"data/{mid}/vals.npy", delimiter=",").reshape(-1, 1)), axis=0)
+                states = np.concatenate((states, np.loadtxt(f"data/{mid}/states.npy", delimiter=",").reshape(-1, 10, 10, 3)), axis=0)
 
-        epochs = 10
 
-        phis, vs, states = shuffle(phis, vs, states)
+        states, phis, vs = add_rotations(states, phis, vs)
+        states, phis, vs = shuffle(states, phis, vs)
+
+        idx = np.random.choice(phis.shape[0], phis.shape[0] // 4, replace=False)
+        phis = phis[idx]
+        vs = vs[idx]
+        states = states[idx]
+
         model.fit(states, [phis, vs], epochs=epochs, batch_size=64, validation_split=0.1)
+
         model.save(f"models/mini-zero-{model_id}")
 
 
@@ -76,5 +93,4 @@ if __name__ == '__main__':
                 print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
         except RuntimeError as e:
             print(e)
-    print(gpus)
     main()

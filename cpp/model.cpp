@@ -24,21 +24,21 @@ model::model(const char* path, const char* tag) {
 
   outputs.push_back(pol_op);
   outputs.push_back(val_op);
-
-  const std::vector<std::int64_t> input_dims = {1, 10, 10, 2};
-  input_tensor = TF_AllocateTensor(TF_FLOAT, input_dims.data(), 4, 200 * sizeof(float));
-
-  const std::vector<std::int64_t> pol_dims = {1, 100};
-  const std::vector<std::int64_t> val_dims = {1, 1};
-  auto pol_size = 100 * sizeof(float);
-  auto val_size = sizeof(float);
-
-  output_tensor.push_back(TF_AllocateTensor(TF_FLOAT, pol_dims.data(), 2, pol_size));
-  output_tensor.push_back(TF_AllocateTensor(TF_FLOAT, val_dims.data(), 2, val_size));
 }
 
-std::pair<float, std::vector<float>> model::predict(float* input_vals) {
+std::vector<std::pair<float, std::vector<float>>> model::predict(float* input_vals, int b_size) {
 
+  const std::vector<std::int64_t> input_dims = {b_size, 10, 10, 3};
+  auto input_tensor = TF_AllocateTensor(TF_FLOAT, input_dims.data(), 4, b_size * 300 * sizeof(float));
+
+  const std::vector<std::int64_t> pol_dims = {b_size, 100};
+  const std::vector<std::int64_t> val_dims = {b_size, 1};
+  auto pol_size = b_size * 100 * sizeof(float);
+  auto val_size = b_size * sizeof(float);
+
+  std::vector<TF_Tensor*> output_tensor;
+  output_tensor.push_back(TF_AllocateTensor(TF_FLOAT, pol_dims.data(), 2, pol_size));
+  output_tensor.push_back(TF_AllocateTensor(TF_FLOAT, val_dims.data(), 2, val_size));
   auto data = TF_TensorData(input_tensor);
   std::memcpy(data, input_vals, TF_TensorByteSize(input_tensor));
   TF_SessionRun(session,
@@ -50,20 +50,25 @@ std::pair<float, std::vector<float>> model::predict(float* input_vals) {
                 status // Output status.
                 );
 
+  std::vector<std::pair<float, std::vector<float>>> result;
   auto pol = static_cast<float*>(TF_TensorData(output_tensor[0]));
   auto val = static_cast<float*>(TF_TensorData(output_tensor[1]));
-  
-  auto v = val[0];
-  std::vector<float> pol_r(100, 0);
-  for (int i = 0; i < 100; i++) pol_r[i] = pol[i];
+  for (int j = 0; j < b_size; j++) {
+    
+    auto v = val[j];
+    std::vector<float> pol_r(100, 0);
+    for (int i = 0; i < 100; i++) pol_r[i] = pol[j*100 + i];
+
+    result.push_back(std::make_pair(v, pol_r));
+  }
 
   TF_DeleteTensor(output_tensor[0]);
   TF_DeleteTensor(output_tensor[1]);
-  return std::make_pair(v, pol_r);
+  TF_DeleteTensor(input_tensor);
+  return result;
 }
 
 model::~model() {
-  TF_DeleteTensor(input_tensor);
   TF_DeleteGraph(graph);
   TF_DeleteSession(session, status);
   TF_DeleteStatus(status);

@@ -14,26 +14,15 @@ std::vector<float> TicTacToe::allowed_moves() {
 }
 
 std::vector<float> TicTacToe::state() const {
-  std::vector<float> res(n*m*2, 0.);
-  for (int t = 0; t < 2; t++) {
-    for (int i = 0; i < n; i++) {
-      for (int j = 0; j< m; j++) {
-        if ((board[i][j] == turn and t == 0) or (board[i][j] == -turn and t == 1)) {
-          res[t * m * n + i * m + j] = 1;
-        }
-      }
-    }
-  }
-  return res;
-}
-
-std::vector<int> TicTacToe::int_state() const {
-  std::vector<int> res(n*m*2, 0);
-  for (int t = 0; t < 2; t++) {
-    for (int i = 0; i < n; i++) {
-      for (int j = 0; j< m; j++) {
-        if ((board[i][j] == 1 and t == 0) or (board[i][j] == -1 and t == 1)) {
-          res[t * m * n + i * m + j] = 1;
+  std::vector<float> res(n*m*3, 0.);
+  for (int i = 0; i < n; i++) {
+    for (int j = 0; j< m; j++) {
+      for (int t = 0; t < 3; t++) {
+        int x = board[i][j];
+        if ((t == 0 and x == 1) or (t == 1 and x == -1)) {
+          res[3 *(i * m + j) + t] = 1;
+        } else if (t == 2) {
+          res[3 * (i * m + j) + t] = (1 - turn) / 2;
         }
       }
     }
