@@ -28,8 +28,8 @@ model::model(const char* path, const char* tag) {
 
 std::vector<std::pair<float, std::vector<float>>> model::predict(float* input_vals, int b_size) {
 
-  const std::vector<std::int64_t> input_dims = {b_size, 10, 10, 3};
-  auto input_tensor = TF_AllocateTensor(TF_FLOAT, input_dims.data(), 4, b_size * 300 * sizeof(float));
+  const std::vector<std::int64_t> input_dims = {b_size, 10, 10, 2};
+  auto input_tensor = TF_AllocateTensor(TF_FLOAT, input_dims.data(), 4, b_size * 200 * sizeof(float));
 
   const std::vector<std::int64_t> pol_dims = {b_size, 100};
   const std::vector<std::int64_t> val_dims = {b_size, 1};
@@ -54,12 +54,9 @@ std::vector<std::pair<float, std::vector<float>>> model::predict(float* input_va
   auto pol = static_cast<float*>(TF_TensorData(output_tensor[0]));
   auto val = static_cast<float*>(TF_TensorData(output_tensor[1]));
   for (int j = 0; j < b_size; j++) {
-    
-    auto v = val[j];
     std::vector<float> pol_r(100, 0);
     for (int i = 0; i < 100; i++) pol_r[i] = pol[j*100 + i];
-
-    result.push_back(std::make_pair(v, pol_r));
+    result.push_back(std::make_pair(val[j], pol_r));
   }
 
   TF_DeleteTensor(output_tensor[0]);

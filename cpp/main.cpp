@@ -1,4 +1,6 @@
 #include <tensorflow/c/c_api.h>
+
+#include <assert.h>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -10,12 +12,11 @@
 
 #include "model.hpp"
 #include "game.hpp"
-#include "mct_search.hpp"
-
+#include "mcts.hpp"
 
 
 void self_play(
-    model &m1, model &m2, int model_id1, int model_id2, std::vector<double> &phis, std::vector<double> &states, std::vector<double> &vs, int nr_games=200) {
+    model &m1, model &m2, int model_id1, int model_id2, std::vector<float> &phis, std::vector<float> &states, std::vector<float> &vs, int nr_games=200) {
 
   std::random_device r;
   std::default_random_engine generator(r());
@@ -23,10 +24,8 @@ void self_play(
 
   int play_as_x = 0;
 
-  float model_1_wins_as_x = 0;
-  float model_1_wins_as_o = 0;
-  float model_1_losses_as_x = 0;
-  float model_1_losses_as_o = 0;
+  float wins_as_x = 0;
+  float wins_as_o = 0;
 
   int played_games = 0;
   int played_games_as_x = 0;
@@ -35,23 +34,28 @@ void self_play(
     int model_move_count = 0;
     auto g = TicTacToe(10, 10, 5);
 
-    mct_search x[] = {mct_search(&m1, g, r(), 600), mct_search(&m2, g, r(), 600)};
+    mcts x[] = {mcts(&m1, g, r(), 420), mcts(&m2, g, r(), 420)};
 
-
+    float t = 1;
     while (g.get_winner() == 2) {
+      if (move_count > 15) {
+        t = 0;
+      }
       if (z == nr_games - 1) {
         std::cout << g;
       }
 
       auto &player = x[(move_count + play_as_x) % 2];
       player.expand(true);
-      auto phi = player.get_phi();
+      auto phi = player.get_phi(t);
       auto state = g.state();
 
       model_move_count += 1;
       std::copy(phi.begin(), phi.end(), std::back_inserter(phis));
       std::copy(state.begin(), state.end(), std::back_inserter(states));
-      auto move = player.get_move();
+      vs.push_back(player.get_q());
+
+      auto move = player.get_move(t);
       x[0].advance(move);
       x[1].advance(move);
       g.move(move);
@@ -62,13 +66,13 @@ void self_play(
     }
     // update vs
     float winner = g.get_winner();
-    if (2*(1 - play_as_x) - 1 == winner) {
-      winner = 1;
-    } else if (winner == 0) {
-      winner = 0; // no op
-    } else {
-      winner = -1;
-    }
+    // if (2*(1 - play_as_x) - 1 == winner) {
+    //   winner = 1;
+    // } else if (winner == 0) {
+    //   winner = 0; // no op
+    // } else {
+    //   winner = -1;
+    // }
 
     // collect statistics to display
     played_games += 1;
@@ -76,41 +80,36 @@ void self_play(
       played_games_as_x += 1;
     }
     if (winner == 1) {
-      if (play_as_x == 0) {
-        model_1_wins_as_x += 1;
-      } else {
-        model_1_wins_as_o += 1;
-      }
+      wins_as_x += 1;
     } else if (winner == -1) {
-      if (play_as_x == 0) {
-        model_1_losses_as_x += 1;
-      } else {
-        model_1_losses_as_o += 1;
-      }
+      wins_as_o += 1;
     }
+    // if (play_as_x != 0) {
+    //   winner *= -1;
+    // }
 
-    if (play_as_x != 0) {
+    int start = vs.size() - model_move_count;
+    for(int i = 0; i < model_move_count; i++) {
+      float z = vs[start + i];
+      vs[start + i] = (z + winner) / 2.f;
+      // vs.push_back(winner);
       winner *= -1;
     }
-    for(int i = 0; i < model_move_count; i++) {
-      vs.push_back(winner);
-      winner *= - 1;
-    }
+
+    assert(winner == -1 or winner == 0);
 
     play_as_x = (play_as_x + 1) % 2;
     std::cout << "\r\033[K" << played_games << "/" << nr_games << std::flush;
   }
-  auto played_games_as_y = played_games - played_games_as_x;
+  int played_games_as_y = played_games - played_games_as_x;
   std::cout << "\n";
   std::cout << "Games played: " << played_games << ", model under training " << model_id1 << "\n";
   std::cout << model_id1 << " vs " << model_id2 << "\n";
-  std::cout << "Winrate as x: " << model_1_wins_as_x / played_games_as_x << "\n";
-  std::cout << "Winrate as o: " << model_1_wins_as_o / played_games_as_y << "\n";
-  std::cout << "Lose rate as x: " << model_1_losses_as_x / played_games_as_x << "\n";
-  std::cout << "Lose rate as o: " << model_1_losses_as_o / played_games_as_y << "\n";
+  std::cout << "Winrate as x: " << wins_as_x / nr_games << "\n";
+  std::cout << "Winrate as o: " << wins_as_o / nr_games << "\n";
 }
 
-void helper(std::string path, std::vector<double>& p) ;
+void helper(std::string path, std::vector<float>& p);
 int main(int argc, char *argv[]) {
   int model_id1 = atoi(argv[1]);
 
@@ -118,10 +117,10 @@ int main(int argc, char *argv[]) {
   s1 << "./models/mini-zero-" << model_id1;
   model m1(s1.str().c_str(), "serve");
 
-  std::vector<double> phis;
-  std::vector<double> states;
-  std::vector<double> vs;
-  self_play(m1, m1, model_id1, model_id1, phis, states, vs, 750);
+  std::vector<float> phis;
+  std::vector<float> states;
+  std::vector<float> vs;
+  self_play(m1, m1, model_id1, model_id1, phis, states, vs, 300);
 
 
   std::ostringstream sp;
@@ -133,7 +132,7 @@ int main(int argc, char *argv[]) {
   helper(save_path + "states.npy", states);
 }
 
-void helper(std::string path, std::vector<double>& p) {
+void helper(std::string path, std::vector<float>& p) {
   std::ofstream ofs(path);
   for (int i = 0; i < p.size(); i++) {
     ofs << p[i];

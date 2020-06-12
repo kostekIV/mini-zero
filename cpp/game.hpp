@@ -12,6 +12,7 @@ private:
   int winner;
   std::vector<std::vector<int>> board;
   std::vector<float> _allowed_moves;
+  std::vector<float> _state;
   int check_winner();
 public:
   TicTacToe(int n, int m, int req);

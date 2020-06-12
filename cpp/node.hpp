@@ -13,43 +13,60 @@ class node_selection;
 
 class mcts_node {
 private:
-  const double vloss = 4.f;
+  const float vloss = 4.f;
   int vl_count = 0;
   int size;
   int action;
-  double visit_count;
-  double pol;
-  double w;
-  double q;
+  float visit_count;
+  float pol;
+  float w;
+  float q;
   TicTacToe t;
   mcts_node *parent;
-  std::unordered_map<int, std::unique_ptr<mcts_node>> children;
-  std::vector<double> th;
-  using node_pair = decltype(children)::value_type;
+  std::vector<std::unique_ptr<mcts_node>> children;
+  std::vector<float> th;
+  using node_pointer = decltype(children)::value_type;
 public:
-  mcts_node(mcts_node *parent, int action, double pol, TicTacToe t);
+  mcts_node(mcts_node *parent, int action, float pol, TicTacToe t);
   node_selection select();
-  void expand_eval(std::vector<float> &pol, double val);
-  double node_value(double c, double n) const;
-  std::vector<double> get_phi(int size);
-  double get_visit_count();
+  void expand_eval(std::vector<float> &pol, float val);
+  float node_value(float c, float n) const;
+  std::vector<float> get_phi(int size, float t);
+  float get_visit_count() const;
   std::unique_ptr<mcts_node> move(int move);
-  void apply_dirichlet(std::vector<double> &th);
-  void apply_dirichlet(double th);
-  void apply_dirichlet_to_children(double alpha, std::default_random_engine &generator);
+  void apply_dirichlet(std::vector<float> &th);
+  void apply_dirichlet(float th);
+  void apply_dirichlet_to_children(float alpha, std::default_random_engine &generator);
   void nullify_parent();
-  void backup(double val);
+  void backup(float val);
+  float get_winrate();
   std::vector<float> state();
+  std::vector<float> most_visited(int n);
+
+  int get_action() const {
+    return action;
+  }
+
+  void clear() {
+    children.clear();
+    visit_count = 0;
+    w = 0;
+    q = 0;
+    vl_count = 0;
+  }
+
+  void get_paths(int n);
+  void get_best_path(int deep);
 };
 
 class node_selection {
 public:
   node_selection() = default;
-  node_selection(mcts_node *node, bool final_position, double v):
+  node_selection(mcts_node *node, bool final_position, float v):
     result(node),
     final_position(final_position),
     v(v) {};
   mcts_node* result;
   bool final_position;
-  double v;
+  float v;
 };

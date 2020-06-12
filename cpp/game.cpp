@@ -5,7 +5,7 @@
 #include <numeric>
 
 TicTacToe::TicTacToe(int n, int m, int req):
-    n(n), m(m), req(req), turn(1), board(n, std::vector<int>(m, 0)), _allowed_moves(m*n, 1){
+    n(n), m(m), req(req), turn(1), board(n, std::vector<int>(m, 0)), _allowed_moves(m*n, 1) {
   winner = 2;
 }
 
@@ -14,15 +14,13 @@ std::vector<float> TicTacToe::allowed_moves() {
 }
 
 std::vector<float> TicTacToe::state() const {
-  std::vector<float> res(n*m*3, 0.);
+  std::vector<float> res(2*n*m, 0.);
   for (int i = 0; i < n; i++) {
     for (int j = 0; j< m; j++) {
-      for (int t = 0; t < 3; t++) {
+      for (int t = 0; t < 2; t++) {
         int x = board[i][j];
-        if ((t == 0 and x == 1) or (t == 1 and x == -1)) {
-          res[3 *(i * m + j) + t] = 1;
-        } else if (t == 2) {
-          res[3 * (i * m + j) + t] = (1 - turn) / 2;
+        if ((t == 0 and x == turn) or (t == 1 and x == -turn)) {
+          res[2 *(i * m + j) + t] = 1;
         }
       }
     }
@@ -40,7 +38,9 @@ int TicTacToe::move(int k) {
   }
 
   board[i][j] = turn;
+
   _allowed_moves[k] = 0;
+  _state.clear();
   turn *= -1;
   last_move = k;
 
@@ -124,12 +124,17 @@ int TicTacToe::get_winner() {
 }
 
 std::ostream& operator<<(std::ostream& os, const TicTacToe& t) {
-  os << std::string(t.m * 7 + t.m, '-') << std::endl;
-  std::string emp = "|";
+  os <<"  |";
+  for (int i = 0; i < t.m; i++) {
+    os << "   " << i  << "   |";
+  }
+  os << std::endl;
+  os << std::string(t.m * 7 + t.m + 3, '-') << std::endl;
+  std::string emp = "  |";
   for (int i = 0; i < t.m; i++) emp += "       |";
-  for (int i = 0; i < t.n; i ++) {
+  for (int i = 0; i < t.n; i++) {
     os << emp << std::endl;
-    os << "|";
+    os << i << " |";
     for (int j = 0; j < t.m; j++) {
       os << "   ";
       if (t.board[i][j] == 1) {
@@ -143,7 +148,7 @@ std::ostream& operator<<(std::ostream& os, const TicTacToe& t) {
     }
 
     os << std::endl << emp << std::endl;
-    os << std::string(t.m * 7 + t.m, '-') << std::endl;
+    os << std::string(t.m * 7 + t.m + 3, '-') << std::endl;
   }
   return os;
 }

@@ -5,29 +5,29 @@ from tensorflow.keras import layers
 
 
 
-def get_model(input_size, output_size, fs=64, layers_deep=3, kernel_size=3):
+def get_model(input_size, output_size, fs=128, layers_deep=3, kernel_size=3):
     inputs = keras.Input(shape=input_size)
 
     x = inputs
 
-    x = layers.Conv2D(fs, kernel_size, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2())(x)
+    x = layers.Conv2D(fs, kernel_size, strides=1, padding='same')(x)
     x = layers.BatchNormalization()(x)
     x = layers.ReLU()(x)
 
     for _ in range(layers_deep):
         start_x = x
-        x = layers.Conv2D(fs, kernel_size, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2())(x)
+        x = layers.Conv2D(fs, kernel_size, strides=1, padding='same')(x)
         x = layers.BatchNormalization()(x)
         x = layers.ReLU()(x)
 
-        x = layers.Conv2D(fs, kernel_size, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2())(x)
+        x = layers.Conv2D(fs, kernel_size, strides=1, padding='same')(x)
         x = layers.BatchNormalization()(x)
         x = layers.ReLU()(x)
 
         # skip connection
         x = layers.Add()([x, start_x])
         x = layers.ReLU()(x)
-    
+
     # policy_head
     x_pol = layers.Conv2D(32, 1, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2())(x)
     x_pol = layers.BatchNormalization()(x_pol)
@@ -57,7 +57,7 @@ def get_model(input_size, output_size, fs=64, layers_deep=3, kernel_size=3):
     }
 
     model.compile(
-        optimizer=keras.optimizers.Adam(lr=3e-4),
+        optimizer=keras.optimizers.SGD(lr=1e-2, nesterov=True),
         loss=loss,
         loss_weights=loss_weights
     )

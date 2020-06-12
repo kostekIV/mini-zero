@@ -6,7 +6,15 @@
 #include <cmath>
 
 
-mcts_node::mcts_node(mcts_node* parent, int action, double pol, TicTacToe t):
+namespace {
+  struct {
+    bool operator()(const std::unique_ptr<mcts_node>&a, const std::unique_ptr<mcts_node>&b) const {
+      return a->get_visit_count() > b->get_visit_count();
+    }
+  } visit_compare;
+}
+
+mcts_node::mcts_node(mcts_node* parent, int action, float pol, TicTacToe t):
     parent(parent),
     action(action),
     pol(pol),
@@ -23,24 +31,25 @@ node_selection mcts_node::select() {
   vl_count++;
 
   if (t.get_winner() != 2 or visit_count == 0) {
-    return {this, t.get_winner() != 2, 1. * abs(t.get_winner())};
+    return {this, t.get_winner() != 2, 1.f * abs(t.get_winner())};
   }
 
-  double c = 2.2;
-  auto n = sqrt(visit_count);
+  float c = log((1.f + visit_count + 10.f) / 10.f) + .2f;
+  float n = sqrt(visit_count);
   mcts_node *best_child;
-  double best_v = INT32_MIN;
+  float best_v = INT32_MIN;
+
   for (auto &x: children) {
-    auto r = x.second->node_value(c, n);
+    auto r = x->node_value(c, n);
     if (r > best_v) {
       best_v = r;
-      best_child = x.second.get();
+      best_child = x.get();
     }
   }
   return best_child->select();
 }
 
-void mcts_node::expand_eval(std::vector<float> &pol, double v) {
+void mcts_node::expand_eval(std::vector<float> &pol, float v) {
   if (t.get_winner() != 2) {
     return backup(v);
   }
@@ -64,7 +73,7 @@ void mcts_node::expand_eval(std::vector<float> &pol, double v) {
     // for each legal action create child
     for (int i = 0; i < am.size(); i++) {
       if (am[i] == 1)
-        children.try_emplace(i, std::make_unique<mcts_node>(this, i, pol[i], t));
+        children.emplace_back(std::make_unique<mcts_node>(this, i, pol[i], t));
     }
 
     // late apply dirichlet
@@ -72,11 +81,10 @@ void mcts_node::expand_eval(std::vector<float> &pol, double v) {
       apply_dirichlet(th);
     }
   }
-
-  backup(v);
+  backup(-v);
 }
 
-void mcts_node::backup(double v) {
+void mcts_node::backup(float v) {
   vl_count--;
   visit_count++;
   w += v;
@@ -86,21 +94,27 @@ void mcts_node::backup(double v) {
   }
 }
 
-double mcts_node::node_value(double c, double n) const {
+inline float mcts_node::node_value(float c, float n) const {
   return q + c * n * pol / (1. + visit_count) - vl_count * vloss;
 }
 
-double mcts_node::get_visit_count() {
+float mcts_node::get_visit_count() const {
   return visit_count;
 }
 
-std::vector<double> mcts_node::get_phi(int size) {
-  std::vector<double> phi(size, 0);
-  auto dn = 1. / (visit_count - 1);
-  std::for_each(children.begin(), children.end(), [&phi, dn](const node_pair &np) {
-    phi[np.first] = np.second->get_visit_count() * dn;
+std::vector<float> mcts_node::get_phi(int size, float t) {
+  std::vector<float> phi(size, 0);
+  int m = 1;
+  if (t != 0) {
+    m = 1 / t;
+  }
+  std::for_each(children.begin(), children.end(), [&phi, m](const node_pointer &np) {
+    phi[np->get_action()] = pow(np->get_visit_count(), m);
   });
-
+  float dn = 1. / std::accumulate(phi.begin(), phi.end(), 0.0);
+  std::for_each(children.begin(), children.end(), [&phi, dn, t](const node_pointer &np) {
+    phi[np->get_action()] *= dn;
+  });
   return phi;
 }
 
@@ -108,16 +122,21 @@ std::unique_ptr<mcts_node> mcts_node::move(int move) {
   if (visit_count == 0) {
     return std::make_unique<mcts_node>(nullptr, move, 0., t);
   }
-  children[move]->nullify_parent();
-  return std::move(children[move]);
+  for (auto &child: children) {
+    if (child->get_action() == move) {
+      child->nullify_parent();
+      return std::move(child);
+    }
+  }
+  throw std::invalid_argument("No child with move " + move);
 }
 
-void mcts_node::apply_dirichlet_to_children(double alpha, std::default_random_engine &generator) {
+void mcts_node::apply_dirichlet_to_children(float alpha, std::default_random_engine &generator) {
   auto am = t.allowed_moves();
   int moves_count = std::accumulate(am.begin(), am.end(), 0);
-  std::vector<double> thetas(moves_count);
-  std::gamma_distribution<double> gamma(alpha, 1);
-  std::for_each(thetas.begin(), thetas.end(), [&generator, &gamma](double &x) {
+  std::vector<float> thetas(moves_count);
+  std::gamma_distribution<float> gamma(alpha, 1);
+  std::for_each(thetas.begin(), thetas.end(), [&generator, &gamma](float &x) {
     x = gamma(generator);
   });
   auto thetas_sum = 1 / std::accumulate(thetas.begin(), thetas.end(), 0.0);
@@ -126,27 +145,66 @@ void mcts_node::apply_dirichlet_to_children(double alpha, std::default_random_en
   apply_dirichlet(thetas);
 };
 
-void mcts_node::apply_dirichlet(std::vector<double> &th) {
+void mcts_node::apply_dirichlet(std::vector<float> &th) {
   if (children.size() == 0) {
     std::copy(th.begin(), th.end(), std::back_inserter(this->th));
     return;
   }
 
   int i = 0;
-  std::for_each(children.begin(), children.end(), [&th, &i](const node_pair &np) {
-    np.second->apply_dirichlet(th[i++]);
+  std::for_each(children.begin(), children.end(), [&th, &i](const node_pointer &np) {
+    np->apply_dirichlet(th[i++]);
   });
 }
 
-void mcts_node::apply_dirichlet(double th) {
-  pol = 0.6 * pol + 0.4 * th;
+void mcts_node::apply_dirichlet(float th) {
+  pol = 0.5 * pol + 0.5 * th;
 }
 
 void mcts_node::nullify_parent() {
   parent = nullptr;
 }
 
-
 std::vector<float> mcts_node::state() {
   return t.state();
+}
+
+float mcts_node::get_winrate() {
+  return q;
+}
+
+std::vector<float> mcts_node::most_visited(int n) {
+  std::vector<float> res;
+  if (children.size() == 0) {
+    return res;
+  }
+  int m = std::min(n, (int) children.size());
+  partial_sort(children.begin(), children.begin() + m, children.end(), visit_compare);
+
+  for (int i = 0; i < m; i++) {
+    res.push_back(children[i]->get_action());
+    res.push_back(children[i]->get_winrate());
+    res.push_back(children[i]->get_visit_count());
+  }
+  return res;
+}
+
+void mcts_node::get_paths(int n) {
+  int m = std::min(n, (int) children.size());
+  partial_sort(children.begin(), children.begin() + m, children.end(), visit_compare);
+
+  for (int i = 0; i < m; i++) {
+  std::cout << "(" << children[i]->get_visit_count() << ", " << children[i]->get_action() << ")";
+    children[i]->get_best_path(5);
+    std::cout << "\n";
+  }
+}
+
+void mcts_node::get_best_path(int deep) {
+  if (deep == 0 or visit_count == 0 or t.get_winner() != 2) {
+    return;
+  }
+  partial_sort(children.begin(), children.begin() + 1, children.end(), visit_compare);
+  std::cout << ", (" << children[0]->get_visit_count() << ", " << children[0]->get_action() << ")";
+  children[0]->get_best_path(deep - 1);
 }

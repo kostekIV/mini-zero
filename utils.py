@@ -36,6 +36,6 @@ def load(i):
     prev_model = tf.keras.models.load_model(f"models/mini-zero-{i-1}")
     phis = np.loadtxt(f"data/{i-1}/phis.npy", delimiter=",").reshape(-1, 100)
     vs = np.loadtxt(f"data/{i-1}/vals.npy", delimiter=",").reshape(-1, 1)
-    states = np.loadtxt(f"data/{i-1}/states.npy", delimiter=",").reshape(-1, 10, 10, 3)
+    states = np.loadtxt(f"data/{i-1}/states.npy", delimiter=",").reshape(-1, 10, 10, 2)
 
     return model, phis, vs, states

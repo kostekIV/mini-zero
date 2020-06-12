@@ -51,31 +51,6 @@ void play_with_human(int model_id) {
   std::cout << g;
 }
 
-// void self_play1(model &m1, model &m2, int nr_sim=800) {
-
-//   int play_as_x = 0;
-
-//   std::random_device r;
-//   std::default_random_engine generator(r());
-//   int move_count = 0;
-//   int model_move_count = 0;
-//   auto g = TicTacToe(10, 10, 5);
-
-//   mcts x[] = {mcts(&m1, nr_sim), mcts(&m2, nr_sim)};
-
-//   while (g.get_winner() == 2) {
-//     auto phi = x[(move_count + play_as_x) % 2].expand_probs(g);
-//     auto state = g.state();
-//     // std::discrete_distribution<int> du(phi.begin(), phi.end());
-//     // auto move = du(generator);
-//     auto move = argmax(phi);
-//     std::cout << g;
-//     move_count += 1;
-//     g.move(move);
-//   }
-//   std::cout << g;
-// }
-
 void self_play(model &m1, model &m2, int nr_sim=800, int nr_random=0) {
   std::random_device r;
   std::default_random_engine generator(r());
@@ -110,46 +85,41 @@ void self_play(model &m1, model &m2, int nr_sim=800, int nr_random=0) {
 
 int main(int argc, char *argv[]) {
   int model_id1 = atoi(argv[1]);
-  if (argc < 3) {
-    play_with_human(model_id1);
-    return 0;
-  }
-  int model_id2 = atoi(argv[2]);
-  int nr_sim = 800;
-  int nr_random = 0;
-  if (argc >= 4) {
-    nr_sim = atoi(argv[3]);
-  }
-  if (argc >= 5) {
-    nr_random = atoi(argv[4]);
-  }
+
+  std::random_device r;
+  std::default_random_engine generator(r());
 
   std::ostringstream s1;
   s1 << "./models/mini-zero-" << model_id1;
   model m1(s1.str().c_str(), "serve");
 
-  std::ostringstream s2;
-  s2 << "./models/mini-zero-" << model_id2;
-  model m2(s2.str().c_str(), "serve");
+  auto g = TicTacToe(10, 10, 5);
+  mcts ai(&m1, g, 0, 1200);
 
-  std::vector<float> phis;
-  std::vector<float> states;
-  std::vector<float> vs;
-  std::cout << "nr of sims " << nr_sim << "\n";
-  auto s = std::chrono::steady_clock::now();
-  for (int i = 0; i >= 0; i--)
-    self_play(m1, m2, nr_sim, nr_random);
-  // self_play(m1, m2, model_id1, model_id2, phis, states, vs, 1, nr_sim);
-  auto e = std::chrono::steady_clock::now();
-  auto d = std::chrono::duration_cast<std::chrono::milliseconds>(e - s);
-  std::cout <<  d.count() / 100. << std::endl;
-
-
-  // s = std::chrono::steady_clock::now();
-  // for (int i = 0; i >= 0; i--)
-  //   self_play1(m1, m2, nr_sim);
-  // // self_play(m1, m2, model_id1, model_id2, phis, states, vs, 1, nr_sim);
-  // e = std::chrono::steady_clock::now();
-  // d = std::chrono::duration_cast<std::chrono::milliseconds>(e - s);
-  // std::cout <<  d.count() / 100. << std::endl;
+  std::string command;
+  int value;
+  while (true) {
+    std::cin >> command;
+    if (command == "sim") {
+      ai.expand(false, true);
+    } else if (command == "set_sims") {
+      std::cin >> value;
+      ai.set_sims(value);
+    } else if (command == "exit") {
+      break;
+    } else if (command == "move") {
+      std::cin >> value;
+      g.move(value);
+      ai.advance(value);
+    } else if (command == "print") {
+      std::cout << g;
+    } else if (command == "ai_move") {
+      std::cout << "best move" << ai.get_move();
+    } else if (command == "paths") {
+      std::cin >> value;
+      ai.n_paths(value);
+    } else {
+      std::cout << "possible commands ...";
+    } 
+  }
 }
